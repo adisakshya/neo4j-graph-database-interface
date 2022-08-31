@@ -51,15 +51,21 @@ class AuthDAO:
             )
 
         # Build a set of claims
-        with self.driver.session() as session:
-            result = session.write_transaction(self.create_user, email, encrypted, name)
-            user = result['u']
-            payload = {
-                "userId": user["userId"],
-                "email":  user["email"],
-                "name":  user["name"]
-            }
-            payload['token'] = self._generate_token(payload)
+        try:
+            with self.driver.session() as session:
+                result = session.write_transaction(self.create_user, email, encrypted, name)
+                user = result['u']
+                payload = {
+                    "userId": user["userId"],
+                    "email":  user["email"],
+                    "name":  user["name"]
+                }
+                payload['token'] = self._generate_token(payload)
+        except ConstraintError as err:
+            # Pass error details through to a ValidationException
+            raise ValidationException(err.message, {
+                "email": err.message
+            })
 
         return payload
     # end::register[]
