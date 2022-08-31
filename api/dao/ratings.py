@@ -16,16 +16,32 @@ class RatingDAO:
     Add a relationship between a User and Movie with a `rating` property.
     The `rating` parameter should be converted to a Neo4j Integer.
     """
+    # Create function to save the rating in the database
+    def create_rating(self, tx, user_id, movie_id, rating):
+        return tx.run("""
+        MATCH (u:User {userId: $user_id})
+        MATCH (m:Movie {tmdbId: $movie_id})
+
+        MERGE (u)-[r:RATED]->(m)
+        SET r.rating = $rating,
+            r.timestamp = timestamp()
+
+        RETURN m {
+            .*,
+            rating: r.rating
+        } AS movie
+        """, user_id=user_id, movie_id=movie_id, rating=rating).single()
+
     # tag::add[]
     def add(self, user_id, movie_id, rating):
         # TODO: Create function to save the rating in the database
         # TODO: Call the function within a write transaction
         # TODO: Return movie details along with a rating
-
-        return {
-            **goodfellas,
-            "rating": rating
-        }
+        with self.driver.session() as session:
+            record = session.write_transaction(self.create_rating, user_id=user_id, movie_id=movie_id, rating=rating)
+            if record is None:
+                raise NotFoundException()
+            return record["movie"]
     # end::add[]
 
 
