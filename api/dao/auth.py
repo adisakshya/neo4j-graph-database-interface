@@ -42,15 +42,7 @@ class AuthDAO:
     # tag::register[]
     def register(self, email, plain_password, name):
         encrypted = bcrypt.hashpw(plain_password.encode("utf8"), bcrypt.gensalt()).decode('utf8')
-
-        # TODO: Handle unique constraint error
-        if email != "graphacademy@neo4j.com":
-            raise ValidationException(
-                f"An account already exists with the email address {email}",
-                {"email": "An account already exists with this email"}
-            )
-
-        # Build a set of claims
+# Build a set of claims
         try:
             with self.driver.session() as session:
                 result = session.write_transaction(self.create_user, email, encrypted, name)
@@ -85,23 +77,48 @@ class AuthDAO:
       token: '...'
     }
     """
+    def get_user(self, tx, email):
+        # Get the result
+        result = tx.run("MATCH (u:User {email: $email}) RETURN u",
+            email=email)
+
+        # Expect a single row
+        first = result.single()
+
+        # No records? Return None
+        if first is None:
+            return None
+
+        # Get the `u` value returned by the Cypher query
+        user = first.get("u")
+
+        return user
+    
     # tag::authenticate[]
     def authenticate(self, email, plain_password):
         # TODO: Implement Login functionality
-        if email == "graphacademy@neo4j.com" and plain_password == "letmein":
-            # Build a set of claims
+        with self.driver.session() as session:
+            user = session.read_transaction(self.get_user, email=email)
+
+            # User not found, return False
+            if user is None:
+                return False
+
+            # Passwords do not match, return false
+            if bcrypt.checkpw(plain_password.encode('utf-8'), user["password"].encode('utf-8')) is False:
+                return False
+            
+            # Generate JWT Token
             payload = {
-                "userId": "00000000-0000-0000-0000-000000000000",
-                "email": email,
-                "name": "GraphAcademy User",
+                "userId": user["userId"],
+                "email":  user["email"],
+                "name":  user["name"],
             }
 
-            # Generate Token
             payload["token"] = self._generate_token(payload)
 
             return payload
-        else:
-            return False
+
     # end::authenticate[]
 
     """
