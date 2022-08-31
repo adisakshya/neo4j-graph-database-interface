@@ -26,6 +26,19 @@ class AuthDAO:
     The properties also be used to generate a JWT `token` which should be included
     with the returned user.
     """
+    def create_user(self, tx, email, encrypted, name):
+        return tx.run("""
+            CREATE (u:User {
+                userId: randomUuid(),
+                email: $email,
+                password: $encrypted,
+                name: $name
+            })
+            RETURN u
+        """,
+        email=email, encrypted=encrypted, name=name # (2)
+        ).single() # (3)
+    
     # tag::register[]
     def register(self, email, plain_password, name):
         encrypted = bcrypt.hashpw(plain_password.encode("utf8"), bcrypt.gensalt()).decode('utf8')
@@ -38,14 +51,15 @@ class AuthDAO:
             )
 
         # Build a set of claims
-        payload = {
-            "userId": "00000000-0000-0000-0000-000000000000",
-            "email": email,
-            "name": name,
-        }
-
-        # Generate Token
-        payload["token"] = self._generate_token(payload)
+        with self.driver.session() as session:
+            result = session.write_transaction(self.create_user, email, encrypted, name)
+            user = result['u']
+            payload = {
+                "userId": user["userId"],
+                "email":  user["email"],
+                "name":  user["name"]
+            }
+            payload['token'] = self._generate_token(payload)
 
         return payload
     # end::register[]
